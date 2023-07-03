@@ -603,7 +603,7 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
             if (line.startsWith("#")) {
                 if (line.startsWith("#EXT-X-KEY:")) {
                     const regex = /https?:\/\/[^\""\s]+/g;
-                    const url = `${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(regex.exec(line)?.[0] ?? "") + "&headers=" + encodeURIComponent(JSON.stringify(headers))}`;
+                    const url = `${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(regex.exec(line)?.[0] ?? "")}`;
                     newLines.push(line.replace(regex, url));
                 } else {
                     newLines.push(line);
@@ -613,7 +613,7 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
                 // CORS is needed since the TS files are not on the same domain as the client.
                 // This replaces each TS file to use a TS proxy with the headers attached.
                 // So each TS request will use the headers inputted to the proxy
-                newLines.push(`${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(uri.href) + "&headers=" + encodeURIComponent(JSON.stringify(headers))}`);
+                newLines.push(`${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(uri.href)}`);
             }
         }
 
@@ -637,17 +637,9 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
  * @param req Client request object
  * @param res Server response object
  */
-export async function proxyTs(url, headers, req, res) {
-    // Allowed Origins
-    const allowedOrigins = ['http://localhost:5173', 'https://aritools.vercel.app'];
-    const origin = req.headers.origin;
-
-    // Set CORS headers
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export async function proxyTs(url: string, headers: any, req, res: http.ServerResponse) {
+    // I love how NodeJS HTTP request client only takes http URLs :D It's so fun!
+    // I'll probably refactor this later.
 
     let forceHTTPS = false;
 
@@ -657,6 +649,9 @@ export async function proxyTs(url, headers, req, res) {
 
     const uri = new URL(url);
 
+    // Options
+    // It might be worth adding ...req.headers to the headers object, but once I did that
+    // the code broke and I receive errors such as "Cannot access direct IP" or whatever.
     const options = {
         hostname: uri.hostname,
         port: uri.port,
@@ -668,6 +663,7 @@ export async function proxyTs(url, headers, req, res) {
         },
     };
 
+    // Proxy request and pipe to client
     try {
         if (forceHTTPS) {
             const proxy = https.request(options, (r) => {
@@ -695,10 +691,9 @@ export async function proxyTs(url, headers, req, res) {
                 end: true,
             });
         }
-    } catch (e) {
+    } catch (e: any) {
         res.writeHead(500);
         res.end(e.message);
         return null;
     }
 }
-
