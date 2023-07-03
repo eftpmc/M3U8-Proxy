@@ -637,7 +637,18 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
  * @param req Client request object
  * @param res Server response object
  */
-export async function proxyTs(url: string, headers: any, req, res: http.ServerResponse) {
+export async function proxyTs(url, headers, req, res) {
+    // Allowed Origins
+    const allowedOrigins = ['http://localhost:5173', 'https://aritools.vercel.app'];
+    const origin = req.headers.origin;
+
+    // Set CORS headers
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
     let forceHTTPS = false;
 
     if (url.startsWith("https://")) {
@@ -660,11 +671,7 @@ export async function proxyTs(url: string, headers: any, req, res: http.ServerRe
     try {
         if (forceHTTPS) {
             const proxy = https.request(options, (r) => {
-                // Set CORS headers to allow any origin
-                r.headers["access-control-allow-origin"] = "*";
-                r.headers["access-control-allow-credentials"] = "true";
                 r.headers["content-type"] = "video/mp2t";
-
                 res.writeHead(r.statusCode ?? 200, r.headers);
 
                 r.pipe(res, {
@@ -677,25 +684,21 @@ export async function proxyTs(url: string, headers: any, req, res: http.ServerRe
             });
         } else {
             const proxy = http.request(options, (r) => {
-                // Set CORS headers to allow any origin
-                r.headers["access-control-allow-origin"] = "*";
-                r.headers["access-control-allow-credentials"] = "true";
                 r.headers["content-type"] = "video/mp2t";
-
                 res.writeHead(r.statusCode ?? 200, r.headers);
 
                 r.pipe(res, {
                     end: true,
                 });
             });
-
             req.pipe(proxy, {
                 end: true,
             });
         }
-    } catch (e: any) {
+    } catch (e) {
         res.writeHead(500);
         res.end(e.message);
         return null;
     }
 }
+
