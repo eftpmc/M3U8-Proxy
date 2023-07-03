@@ -603,7 +603,7 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
             if (line.startsWith("#")) {
                 if (line.startsWith("#EXT-X-KEY:")) {
                     const regex = /https?:\/\/[^\""\s]+/g;
-                    const url = `${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(regex.exec(line)?.[0] ?? "")}`;
+                    const url = `${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(regex.exec(line)?.[0] ?? "") + "&headers=" + encodeURIComponent(JSON.stringify(headers))}`;
                     newLines.push(line.replace(regex, url));
                 } else {
                     newLines.push(line);
@@ -613,7 +613,7 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
                 // CORS is needed since the TS files are not on the same domain as the client.
                 // This replaces each TS file to use a TS proxy with the headers attached.
                 // So each TS request will use the headers inputted to the proxy
-                newLines.push(`${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(uri.href)}`);
+                newLines.push(`${web_server_url}${"/ts-proxy?url=" + encodeURIComponent(uri.href) + "&headers=" + encodeURIComponent(JSON.stringify(headers))}`);
             }
         }
 
@@ -637,25 +637,63 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
  * @param req Client request object
  * @param res Server response object
  */
+export async function proxyTs(url: string, headers: any, req, res: http.ServerResponse) {
+    // I love how NodeJS HTTP request client only takes http URLs :D It's so fun!
+    // I'll probably refactor this later.
 
-export async function proxyTs(url: string, headers: any, req, res) {
+    let forceHTTPS = false;
+
+    if (url.startsWith("https://")) {
+        forceHTTPS = true;
+    }
+
+    const uri = new URL(url);
+
+    // Options
+    // It might be worth adding ...req.headers to the headers object, but once I did that
+    // the code broke and I receive errors such as "Cannot access direct IP" or whatever.
+    const options = {
+        hostname: uri.hostname,
+        port: uri.port,
+        path: uri.pathname + uri.search,
+        method: req.method,
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36",
+            ...headers,
+        },
+    };
+
+    // Proxy request and pipe to client
     try {
-        const axiosStream = await axios.get(url, {
-            responseType: 'stream',
-            timeout: 5000,
-            headers
-        });
+        if (forceHTTPS) {
+            const proxy = https.request(options, (r) => {
+                r.headers["content-type"] = "video/mp2t";
+                res.writeHead(r.statusCode ?? 200, r.headers);
 
-        const contentType = axiosStream.headers['content-type'];
-        if (contentType === 'video/mp2t') {
-            res.set('Content-Type', contentType);
-            axiosStream.data.pipe(res);
+                r.pipe(res, {
+                    end: true,
+                });
+            });
+
+            req.pipe(proxy, {
+                end: true,
+            });
         } else {
-            res.status(400).send('Invalid content type');
+            const proxy = http.request(options, (r) => {
+                r.headers["content-type"] = "video/mp2t";
+                res.writeHead(r.statusCode ?? 200, r.headers);
+
+                r.pipe(res, {
+                    end: true,
+                });
+            });
+            req.pipe(proxy, {
+                end: true,
+            });
         }
-    } catch (error) {
-        console.error('Caught error during request:', error);
-        res.status(500).send('Error occurred while fetching the video from the server');
+    } catch (e: any) {
+        res.writeHead(500);
+        res.end(e.message);
+        return null;
     }
 }
-
