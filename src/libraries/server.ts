@@ -638,9 +638,6 @@ export async function proxyM3U8(url: string, headers: any, res: http.ServerRespo
  * @param res Server response object
  */
 export async function proxyTs(url: string, headers: any, req, res: http.ServerResponse) {
-    // I love how NodeJS HTTP request client only takes http URLs :D It's so fun!
-    // I'll probably refactor this later.
-
     let forceHTTPS = false;
 
     if (url.startsWith("https://")) {
@@ -649,9 +646,6 @@ export async function proxyTs(url: string, headers: any, req, res: http.ServerRe
 
     const uri = new URL(url);
 
-    // Options
-    // It might be worth adding ...req.headers to the headers object, but once I did that
-    // the code broke and I receive errors such as "Cannot access direct IP" or whatever.
     const options = {
         hostname: uri.hostname,
         port: uri.port,
@@ -663,11 +657,14 @@ export async function proxyTs(url: string, headers: any, req, res: http.ServerRe
         },
     };
 
-    // Proxy request and pipe to client
     try {
         if (forceHTTPS) {
             const proxy = https.request(options, (r) => {
+                // Set CORS headers to allow any origin
+                r.headers["access-control-allow-origin"] = "*";
+                r.headers["access-control-allow-credentials"] = "true";
                 r.headers["content-type"] = "video/mp2t";
+
                 res.writeHead(r.statusCode ?? 200, r.headers);
 
                 r.pipe(res, {
@@ -680,13 +677,18 @@ export async function proxyTs(url: string, headers: any, req, res: http.ServerRe
             });
         } else {
             const proxy = http.request(options, (r) => {
+                // Set CORS headers to allow any origin
+                r.headers["access-control-allow-origin"] = "*";
+                r.headers["access-control-allow-credentials"] = "true";
                 r.headers["content-type"] = "video/mp2t";
+
                 res.writeHead(r.statusCode ?? 200, r.headers);
 
                 r.pipe(res, {
                     end: true,
                 });
             });
+
             req.pipe(proxy, {
                 end: true,
             });
